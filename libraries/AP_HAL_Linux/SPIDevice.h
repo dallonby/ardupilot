@@ -29,6 +29,8 @@ class SPIDesc;
 
 class SPIDevice : public AP_HAL::SPIDevice {
 public:
+    mraa_gpio_context SCS;
+    mraa_spi_context spi;
     SPIDevice(SPIBus &bus, SPIDesc &device_desc);
 
     virtual ~SPIDevice();

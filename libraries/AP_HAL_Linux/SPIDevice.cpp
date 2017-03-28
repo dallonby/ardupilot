@@ -26,6 +26,8 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <vector>
+#include <string.h>
+#include "mraa.h"
 
 #include <AP_HAL/AP_HAL.h>
 #include <AP_HAL/utility/OwnPtr.h>
@@ -125,6 +127,10 @@ SPIDesc SPIDeviceManager::_device[] = {
     SPIDesc("aeroio", 1, 1, SPI_MODE_0, 8, SPI_CS_KERNEL,  10*MHZ, 10*MHZ),
     SPIDesc("bmi160", 3, 0, SPI_MODE_3, 8, SPI_CS_KERNEL, 1*MHZ, 10*MHZ),
 };
+#elif CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_NONE
+SPIDesc SPIDeviceManager::_device[] = {
+    SPIDesc("mpu9250",5, 1, SPI_MODE_3, 8, SPI_CS_KERNEL,  1*MHZ, 20*MHZ),
+};
 #else
 // empty device table
 SPIDesc SPIDeviceManager::_device[] = {
@@ -207,6 +213,16 @@ SPIDevice::SPIDevice(SPIBus &bus, SPIDesc &device_desc)
     : _bus(bus)
     , _desc(device_desc)
 {
+#if CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_NONE
+    mraa_init();
+    SCS = mraa_gpio_init(7);
+    hal.console->printf("Ports initialized\n");
+    mraa_gpio_dir(SCS, MRAA_GPIO_OUT);
+    hal.console->printf("Port directions set\n");
+    spi = mraa_spi_init(0);
+    mraa_spi_mode(spi, MRAA_SPI_MODE3);
+    mraa_spi_lsbmode(spi, 0);
+#else
     set_device_bus(_bus.bus);
     set_device_address(_desc.subdev);
     _speed = _desc.highspeed;
@@ -220,8 +236,9 @@ SPIDevice::SPIDevice(SPIBus &bus, SPIDesc &device_desc)
         _cs->mode(HAL_GPIO_OUTPUT);
 
         // do not hold the SPI bus initially
-        _cs_release();
+        _cs_release();        
     }
+#endif    
 }
 
 SPIDevice::~SPIDevice()
@@ -247,6 +264,17 @@ bool SPIDevice::set_speed(AP_HAL::Device::Speed speed)
 bool SPIDevice::transfer(const uint8_t *send, uint32_t send_len,
                          uint8_t *recv, uint32_t recv_len)
 {
+#if CONFIG_HAL_BOARD_SUBTYPE == HAL_BOARD_SUBTYPE_LINUX_NONE
+    uint32_t length = send_len;
+    if (recv_len > send_len) length = recv_len;
+    uint8_t tmpRcv[length+1];
+    uint8_t tmpSend[length+1];
+    memcpy(tmpSend,send,send_len);
+    mraa_result_t res = mraa_spi_transfer_buf(spi,tmpSend,tmpRcv,length+1);
+    memcpy(recv,tmpRcv+1,recv_len);
+    if (res != MRAA_SUCCESS ) return false;
+    return true;
+#else    
     struct spi_ioc_transfer msgs[2] = { };
     unsigned nmsgs = 0;
 
@@ -320,6 +348,7 @@ bool SPIDevice::transfer(const uint8_t *send, uint32_t send_len,
     }
 
     return true;
+#endif
 }
 
 bool SPIDevice::transfer_fullduplex(const uint8_t *send, uint8_t *recv,

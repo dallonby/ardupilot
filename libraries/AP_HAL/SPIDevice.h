@@ -21,6 +21,7 @@
 #include "AP_HAL_Namespace.h"
 #include "Device.h"
 #include "utility/OwnPtr.h"
+#include <mraa.h>
 
 namespace AP_HAL {
 
